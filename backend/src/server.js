@@ -9,6 +9,7 @@ import YAML from 'yaml';
 import publicRoutes from './routes/public.js';
 import adminRoutes from './routes/admin.js';
 import { HttpError } from './db.js';
+import { handleMcp, mcpMethodNotAllowed } from './mcp.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 4000;
@@ -22,6 +23,11 @@ app.use(express.json({ limit: '100kb' }));
 const openapi = YAML.parse(fs.readFileSync(path.join(__dirname, 'openapi.yaml'), 'utf8'));
 app.get('/api-docs/openapi.json', (_req, res) => res.json(openapi));
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openapi, { customSiteTitle: 'Cactus Shop API' }));
+
+// MCP สำหรับ chatbot (Botnoi AI Agent ฯลฯ) → POST http://localhost:4000/mcp
+app.post('/mcp', handleMcp);
+app.get('/mcp', mcpMethodNotAllowed);
+app.delete('/mcp', mcpMethodNotAllowed);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.use('/api', publicRoutes);
@@ -40,4 +46,5 @@ app.use((err, _req, res, _next) => {
 app.listen(PORT, () => {
   console.log(`Cactus Shop API  → http://localhost:${PORT}/api`);
   console.log(`API docs         → http://localhost:${PORT}/api-docs`);
+  console.log(`MCP (chatbot)    → http://localhost:${PORT}/mcp`);
 });

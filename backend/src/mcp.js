@@ -1,0 +1,161 @@
+// MCP server สำหรับ chatbot (เช่น Botnoi AI Agent)
+// endpoint: POST /mcp (Streamable HTTP แบบ stateless, ตอบกลับเป็น JSON)
+// เครื่องมือ: list_products, track_order, create_order
+// ไม่มีเครื่องมือฝั่ง admin เพื่อให้แชตแก้สต็อก/ลบสินค้า/ดูข้อมูลลูกค้าคนอื่นไม่ได้
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { z } from 'zod';
+import * as db from './db.js';
+import { placeOrder, lookupOrder } from './actions.js';
+
+const STATUS_TH = { pending: 'รอดำเนินการ', shipping: 'กำลังจัดส่ง', completed: 'จัดส่งสำเร็จ', cancelled: 'ยกเลิกแล้ว' };
+
+const ok = (data) => ({ content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] });
+const fail = (message, details) => ({
+  isError: true,
+  content: [{ type: 'text', text: JSON.stringify({ error: message, ...(details && { details }) }, null, 2) }],
+});
+
+/** แปลง error จาก db (HttpError) เป็นคำตอบของ tool แทนการ throw */
+function run(fn) {
+  try {
+    return ok(fn());
+  } catch (err) {
+    if (err instanceof db.HttpError) return fail(err.message, err.details);
+    console.error('[mcp]', err);
+    return fail('เกิดข้อผิดพลาดในระบบ');
+  }
+}
+
+function buildServer() {
+  const server = new McpServer({ name: 'cactus-shop', version: '1.0.0' });
+
+  server.registerTool(
+    'list_products',
+    {
+      title: 'ดูสินค้า',
+      description:
+        'List cacti for sale with live price and stock. Use this before recommending plants, answering price/stock questions, or placing an order (to get the product id). stock = 0 means sold out.',
+      inputSchema: {
+        category: z
+          .enum(['astrophytum', 'mammillaria', 'moon-cactus'])
+          .optional()
+          .describe('Filter by category. Omit to list everything.'),
+      },
+    },
+    async ({ category }) =>
+      run(() => {
+        const categories = new Map(db.listCategories().map((c) => [c.id, c.name]));
+        return db.listProducts({ category }).map((p) => ({
+          id: p.id,
+          name: p.name,
+          category: categories.get(p.categoryId) || p.categoryId,
+          price: p.price,
+          stock: p.stock,
+          inStock: p.stock > 0,
+          description: p.description,
+        }));
+      }),
+  );
+
+  server.registerTool(
+    'track_order',
+    {
+      title: 'เช็กสถานะออเดอร์',
+      description:
+        'Look up an order status. Requires BOTH the order number (e.g. CT261118-0001) and the phone number used when ordering; they must match.',
+      inputSchema: {
+        orderNo: z.string().describe('Order number, e.g. CT261118-0001'),
+        phone: z.string().describe('Phone number used for the order, e.g. 0812345678'),
+      },
+    },
+    async ({ orderNo, phone }) =>
+      run(() => {
+        const order = lookupOrder(orderNo, phone);
+        return { ...order, statusText: STATUS_TH[order.status] || order.status };
+      }),
+  );
+
+  server.registerTool(
+    'create_order',
+    {
+      title: 'สั่งซื้อ',
+      description:
+        'Place an order and reserve stock. Only call this AFTER showing the customer a full summary (items, quantities, total, address) and they explicitly confirmed. Call once per confirmation. There is no online payment; the shop contacts the customer afterwards. Returns orderNo on success.',
+      inputSchema: {
+        name: z.string().describe('Recipient full name'),
+        phone: z.string().describe('Recipient phone, starts with 0, 9-10 digits'),
+        houseNo: z.string().describe('House number, e.g. 99/1'),
+        moo: z.string().optional().describe('Village number (หมู่), optional'),
+        street: z.string().optional().describe('Street / soi / village name, optional'),
+        subDistrict: z.string().describe('Sub-district (ตำบล/แขวง)'),
+        district: z.string().describe('District (อำเภอ/เขต)'),
+        province: z.string().describe('Province (จังหวัด)'),
+        zipCode: z.string().describe('5-digit postal code'),
+        note: z.string().optional().describe('Note to the shop, optional'),
+        items: z
+          .array(
+            z.object({
+              productId: z.string().describe('Product id from list_products, e.g. moon-001'),
+              qty: z.coerce.number().int().min(1).describe('Quantity'),
+            }),
+          )
+          .min(1)
+          .describe('Plants to order'),
+      },
+    },
+    async (args) =>
+      run(() => {
+        const order = placeOrder({
+          customer: { name: args.name, phone: args.phone },
+          address: {
+            houseNo: args.houseNo,
+            moo: args.moo || '',
+            street: args.street || '',
+            subDistrict: args.subDistrict,
+            district: args.district,
+            province: args.province,
+            zipCode: args.zipCode,
+          },
+          note: args.note || '',
+          items: args.items,
+        });
+        return {
+          orderNo: order.orderNo,
+          status: order.status,
+          statusText: STATUS_TH[order.status],
+          items: order.items,
+          total: order.total,
+        };
+      }),
+  );
+
+  return server;
+}
+
+/** Express handler: ทุก request สร้าง server + transport ใหม่ (stateless) */
+export async function handleMcp(req, res) {
+  const server = buildServer();
+  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
+  res.on('close', () => {
+    transport.close();
+    server.close();
+  });
+  // บาง chatbot platform ส่ง Accept มาแค่ application/json ซึ่ง spec บังคับให้ปฏิเสธ (406)
+  // เราตอบเป็น JSON อยู่แล้ว (enableJsonResponse) จึงเติม header ให้ครบเพื่อให้เชื่อมต่อได้
+  req.headers.accept = 'application/json, text/event-stream';
+  try {
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.body);
+  } catch (err) {
+    console.error('[mcp]', err);
+    if (!res.headersSent) {
+      res.status(500).json({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal server error' }, id: null });
+    }
+  }
+}
+
+/** GET/DELETE /mcp ไม่รองรับในโหมด stateless */
+export function mcpMethodNotAllowed(_req, res) {
+  res.status(405).set('Allow', 'POST').json({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed.' }, id: null });
+}

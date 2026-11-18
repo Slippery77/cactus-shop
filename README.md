@@ -72,10 +72,25 @@ npm run dev
 | GET | `/api/admin/events` | SSE ของ admin: ได้ event สินค้า + `order.created`, `order.updated` |
 
 ### สำหรับต่อ chatbot (เช่น Botnoi)
-ทุก endpoint เรียกได้เลยไม่ต้อง login ที่น่าจะใช้กับ chatbot คือ
-- `GET /api/products?category=moon-cactus` สำหรับตอบว่ามีอะไรขาย ราคาเท่าไร เหลือกี่ชิ้น
-- `GET /api/orders/{orderNo}?phone=08xxxxxxxx` สำหรับเช็กสถานะออเดอร์ (ต้องใช้เบอร์ให้ตรงกัน และไม่คืนชื่อหรือที่อยู่)
-- `POST /api/orders` ถ้าอยากให้สั่งซื้อผ่านแชตได้ด้วย
+
+**แนะนำ: ต่อผ่าน MCP** ที่ `POST /mcp` (Streamable HTTP, ไม่ต้อง login) AI Agent จะเรียกเครื่องมือเองตามบทสนทนา
+
+| เครื่องมือ | ใช้ทำอะไร |
+|---|---|
+| `list_products` | ดูสินค้า ราคา สต็อกล่าสุด (กรองตามหมวดได้) และได้ `id` ไว้ใช้สั่งซื้อ |
+| `track_order` | เช็กสถานะออเดอร์ ต้องใช้เลขออเดอร์ + เบอร์โทรที่ตรงกัน |
+| `create_order` | สั่งซื้อ (หลายชนิดได้) ตัดสต็อกและแจ้ง realtime เหมือนสั่งจากหน้าเว็บ |
+
+ใน Botnoi: MCP Tools → Add new connection → Add Custom MCP → ใส่ URL `https://<โดเมน backend>/mcp` แล้วเลือกใช้ใน AI Agent
+
+ทดสอบเองได้ด้วย MCP Inspector: `npx @modelcontextprotocol/inspector` แล้วเลือก Streamable HTTP ใส่ URL `http://localhost:4000/mcp`
+
+ไม่มีเครื่องมือฝั่ง admin ใน MCP แชตจึงแก้สต็อก ลบสินค้า หรือดูข้อมูลลูกค้าคนอื่นไม่ได้
+
+**หรือเรียก REST ตรง ๆ** (เช่น API object ของ Botnoi)
+- `GET /api/products?category=moon-cactus`
+- `GET /api/orders/{orderNo}?phone=08xxxxxxxx`
+- `POST /api/orders`
 
 ## Deploy
 

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as db from '../db.js';
-import { subscribe, broadcastPublic, broadcastAdmin } from '../realtime.js';
+import { subscribe } from '../realtime.js';
+import { placeOrder, lookupOrder } from '../actions.js';
 
 const router = Router();
 
@@ -19,19 +20,12 @@ router.get('/products/:id', (req, res, next) => {
 });
 
 router.post('/orders', (req, res) => {
-  const { order, changedProducts } = db.createOrder(req.body || {});
-  for (const p of changedProducts) broadcastPublic('product.updated', p);
-  broadcastAdmin('order.created', order);
-  res.status(201).json(order);
+  res.status(201).json(placeOrder(req.body || {}));
 });
 
 // เช็กสถานะออเดอร์ (ใช้กับหน้า "ติดตามคำสั่งซื้อ" และ chatbot) ต้องใส่เบอร์โทรให้ตรงกันด้วย
-router.get('/orders/:orderNo', (req, res, next) => {
-  const order = db.findOrderByNo(req.params.orderNo.trim().toUpperCase());
-  const phone = String(req.query.phone || '').replace(/[\s-]/g, '');
-  if (!order || order.customer.phone !== phone) return next(new db.HttpError(404, 'ไม่พบคำสั่งซื้อ หรือเบอร์โทรไม่ตรงกัน'));
-  const { id, orderNo, status, items, total, createdAt, updatedAt } = order;
-  res.json({ id, orderNo, status, items, total, createdAt, updatedAt });
+router.get('/orders/:orderNo', (req, res) => {
+  res.json(lookupOrder(req.params.orderNo, req.query.phone));
 });
 
 router.get('/events', (req, res) => subscribe('public', req, res));

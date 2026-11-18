@@ -9,6 +9,7 @@ info:
     - `/api/admin/*` คือ endpoint ที่หน้าหลังบ้านใช้ (จัดการสินค้า/ออเดอร์)
     - Error ทุกตัวตอบเป็น `{ "error": "ข้อความ", "details": [...] }`
     - Realtime ใช้ Server-Sent Events: เปิด `GET /api/events` ค้างไว้แล้วรอรับ event
+    - Chatbot (เช่น Botnoi AI Agent) เชื่อมผ่าน MCP ที่ `POST /mcp` มีเครื่องมือ list_products, track_order, create_order
 servers:
   - url: http://localhost:4000
     description: Local
@@ -72,6 +73,7 @@ paths:
       summary: สร้างคำสั่งซื้อ (ตัดสต็อกทันที)
       description: |
         เช็กสต็อกทุกรายการก่อน ถ้ามีรายการใดไม่พอจะไม่สร้างออเดอร์และไม่ตัดสต็อกเลย (ตอบ 409)
+        ถ้า productId ไม่มีอยู่จริงตอบ 400
         ถ้าสำเร็จจะได้สถานะ `pending`
       requestBody:
         required: true

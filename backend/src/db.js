@@ -173,6 +173,10 @@ export function createOrder(input) {
     else if (product.stock < qty) problems.push({ productId, name: product.name, reason: 'insufficient_stock', requested: qty, available: product.stock });
     else lines.push({ product, qty });
   }
+  if (problems.some((p) => p.reason === 'not_found')) {
+    const ids = problems.filter((p) => p.reason === 'not_found').map((p) => p.productId).join(', ');
+    throw new HttpError(400, `ไม่พบสินค้ารหัส: ${ids} (ต้องใช้ id สินค้า เช่น moon-001)`, problems);
+  }
   if (problems.length) throw new HttpError(409, 'สินค้าบางรายการมีไม่พอ', problems);
 
   // 2) ผ่านทุกรายการแล้วค่อยตัดสต็อกและสร้างออเดอร์

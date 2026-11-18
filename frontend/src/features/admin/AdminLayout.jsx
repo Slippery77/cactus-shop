@@ -1,5 +1,4 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { API_URL } from '../../lib/api';
 
 export default function AdminLayout() {
   return (
@@ -13,9 +12,6 @@ export default function AdminLayout() {
             สินค้า / สต็อก
           </NavLink>
         </nav>
-        <a href={`${API_URL}/api-docs`} target="_blank" rel="noreferrer" className="btn btn-sm btn-ghost">
-          API Docs ↗
-        </a>
       </div>
       <Outlet />
     </div>
