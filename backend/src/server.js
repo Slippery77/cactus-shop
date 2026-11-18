@@ -9,7 +9,8 @@ import YAML from 'yaml';
 import publicRoutes from './routes/public.js';
 import adminRoutes from './routes/admin.js';
 import { HttpError } from './db.js';
-import { handleMcp, mcpMethodNotAllowed } from './mcp.js';
+import { handleMcp, mcpMethodNotAllowed, mcpLog } from './mcp.js';
+import { chatRouter } from './chat.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 4000;
@@ -17,7 +18,8 @@ const origins = (process.env.CORS_ORIGIN || '*').split(',').map((s) => s.trim())
 
 const app = express();
 app.use(cors({ origin: origins.includes('*') ? true : origins }));
-app.use(express.json({ limit: '100kb' }));
+// เก็บ body ดิบไว้ตรวจลายเซ็นของ Botnoi callback
+app.use(express.json({ limit: '100kb', verify: (req, _res, buf) => { req.rawBody = buf.toString('utf8'); } }));
 
 // API docs (Swagger UI) → http://localhost:4000/api-docs
 const openapi = YAML.parse(fs.readFileSync(path.join(__dirname, 'openapi.yaml'), 'utf8'));
@@ -26,10 +28,12 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openapi, { customSiteTitle
 
 // MCP สำหรับ chatbot (Botnoi AI Agent ฯลฯ) → POST http://localhost:4000/mcp
 app.post('/mcp', handleMcp);
+app.get('/mcp/log', mcpLog); // debug: ดู request ล่าสุดจาก chatbot
 app.get('/mcp', mcpMethodNotAllowed);
 app.delete('/mcp', mcpMethodNotAllowed);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
+app.use('/api/chat', chatRouter); // แชตบนเว็บ ↔ Botnoi Custom Channel
 app.use('/api', publicRoutes);
 app.use('/api/admin', adminRoutes);
 

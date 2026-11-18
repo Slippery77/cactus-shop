@@ -17,6 +17,8 @@ export async function api(path, { method = 'GET', body } = {}) {
   if (res.status === 204) return null;
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(res.status, data);
+  // ได้ 200 แต่ไม่ใช่ JSON = ยิงไปผิดที่ (ส่วนใหญ่คือยังไม่ได้ตั้ง VITE_API_URL ตอน deploy)
+  if (data === null) throw new ApiError(res.status, { error: 'ติดต่อ API ไม่ได้ (ตรวจสอบ VITE_API_URL)' });
   return data;
 }
 
@@ -24,7 +26,15 @@ export async function api(path, { method = 'GET', body } = {}) {
 export function openEvents(path, handlers) {
   const es = new EventSource(`${API_URL}/api${path}`);
   for (const [event, fn] of Object.entries(handlers)) {
-    es.addEventListener(event, (e) => fn(e.data ? JSON.parse(e.data) : null));
+    es.addEventListener(event, (e) => {
+      let payload = null;
+      try {
+        payload = e.data ? JSON.parse(e.data) : null;
+      } catch {
+        return;
+      }
+      fn(payload);
+    });
   }
   return () => es.close();
 }

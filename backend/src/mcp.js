@@ -2,6 +2,7 @@
 // endpoint: POST /mcp (Streamable HTTP แบบ stateless, ตอบกลับเป็น JSON)
 // เครื่องมือ: list_products, track_order, create_order
 // ไม่มีเครื่องมือฝั่ง admin เพื่อให้แชตแก้สต็อก/ลบสินค้า/ดูข้อมูลลูกค้าคนอื่นไม่ได้
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
@@ -18,9 +19,13 @@ const fail = (message, details) => ({
 
 /** แปลง error จาก db (HttpError) เป็นคำตอบของ tool แทนการ throw */
 function run(fn) {
+  const entry = ctx.getStore();
   try {
-    return ok(fn());
+    const result = ok(fn());
+    if (entry) entry.toolResult = 'ok';
+    return result;
   } catch (err) {
+    if (entry) entry.toolResult = `error: ${err.message}`;
     if (err instanceof db.HttpError) return fail(err.message, err.details);
     console.error('[mcp]', err);
     return fail('เกิดข้อผิดพลาดในระบบ');
@@ -133,20 +138,57 @@ function buildServer() {
   return server;
 }
 
+// ---------- บันทึก request ล่าสุด (ไว้ debug การเชื่อมต่อกับ chatbot) ----------
+// เก็บเฉพาะข้อมูลการเชื่อมต่อ ไม่เก็บ arguments (ชื่อ/ที่อยู่/เบอร์ลูกค้า)
+const recent = [];
+const ctx = new AsyncLocalStorage();
+
+function logEntry(entry) {
+  recent.unshift(entry);
+  recent.length = Math.min(recent.length, 30);
+}
+
+/** GET /mcp/log → ดู 30 request ล่าสุดที่เข้ามาที่ /mcp */
+export function mcpLog(_req, res) {
+  res.json(recent);
+}
+
 /** Express handler: ทุก request สร้าง server + transport ใหม่ (stateless) */
 export async function handleMcp(req, res) {
+  const started = Date.now();
+  const body = req.body;
+  const messages = Array.isArray(body) ? body : [body];
+  const accept = String(req.headers.accept || '');
+  // ตอบแบบที่ client ขอ: ถ้ารับ text/event-stream ได้ ตอบเป็น SSE (ค่ามาตรฐาน), ถ้าขอแค่ JSON ตอบเป็น JSON
+  const jsonMode = !accept.includes('text/event-stream');
+  const entry = {
+    at: new Date(started).toISOString(),
+    rpc: messages.map((m) => m?.method || (m?.result ? 'result' : '?')).join(','),
+    tool: messages.find((m) => m?.method === 'tools/call')?.params?.name,
+    accept,
+    contentType: req.headers['content-type'],
+    sessionId: req.headers['mcp-session-id'],
+    protocolVersion: req.headers['mcp-protocol-version'],
+    userAgent: String(req.headers['user-agent'] || '').slice(0, 80),
+    mode: jsonMode ? 'json' : 'sse',
+  };
+  res.on('finish', () => {
+    entry.status = res.statusCode;
+    entry.ms = Date.now() - started;
+  });
+  logEntry(entry);
+
   const server = buildServer();
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
+  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: jsonMode });
   res.on('close', () => {
     transport.close();
     server.close();
   });
-  // บาง chatbot platform ส่ง Accept มาแค่ application/json ซึ่ง spec บังคับให้ปฏิเสธ (406)
-  // เราตอบเป็น JSON อยู่แล้ว (enableJsonResponse) จึงเติม header ให้ครบเพื่อให้เชื่อมต่อได้
+  // spec ให้ client ส่ง Accept ทั้งสองแบบ ถ้าไม่ครบ SDK จะตอบ 406 จึงเติมให้ครบ (แต่ยังตอบตามแบบที่ client ขอ)
   req.headers.accept = 'application/json, text/event-stream';
   try {
     await server.connect(transport);
-    await transport.handleRequest(req, res, req.body);
+    await ctx.run(entry, () => transport.handleRequest(req, res, body));
   } catch (err) {
     console.error('[mcp]', err);
     if (!res.headersSent) {

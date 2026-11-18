@@ -92,6 +92,19 @@ npm run dev
 - `GET /api/orders/{orderNo}?phone=08xxxxxxxx`
 - `POST /api/orders`
 
+### กล่องแชตบนเว็บ (Botnoi Custom Channel)
+หน้าเว็บมีกล่องแชตของเราเอง (มุมขวาล่าง ไม่แสดงในหลังบ้าน) คุยกับบอท Botnoi ผ่าน backend ไม่ใช้ iframe ของ Botnoi จึงไม่ติดปัญหาคุกกี้หรือ CSP
+
+```
+หน้าเว็บ → POST /api/chat/send → backend เซ็น HMAC-SHA256 → Botnoi webhook
+Botnoi → POST /api/chat/botnoi-callback → backend → SSE /api/chat/events → หน้าเว็บ
+```
+
+ตั้งค่า:
+1. Render (backend) → Environment: `BOTNOI_SIGNING_SECRET` (จาก Botnoi → Channels → Custom Channel), `BOTNOI_WEBHOOK_URL`
+2. Botnoi → Channels → Custom Channel → ตั้ง URL ปลายทางเป็น `https://<โดเมน backend>/api/chat/botnoi-callback` แล้วเปิดใช้งาน
+3. ดูการรับส่งล่าสุดได้ที่ `GET /api/chat/log` (ไว้ debug)
+
 ## Deploy
 
 **Backend** (เช่น Render, Railway หรือ VPS)
