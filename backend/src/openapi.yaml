@@ -263,6 +263,8 @@ components:
         price: { type: number, example: 350 }
         stock: { type: integer, example: 8, description: '0 = สินค้าหมด' }
         imageUrl: { type: string, description: 'ว่างได้ หน้าบ้านจะแสดงภาพประกอบแทน' }
+        imageCredit: { type: string, description: 'เครดิตรูป (ผู้ถ่าย · สัญญาอนุญาต) มีเฉพาะสินค้าตัวอย่าง' }
+        imageSource: { type: string, description: 'ลิงก์หน้าต้นทางของรูป' }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 

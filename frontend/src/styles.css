@@ -103,7 +103,10 @@ main { padding: 24px 0 64px; }
 
 .cactus-img { aspect-ratio: 1; background: linear-gradient(180deg, #f3efe4, #ebe5d6); display: grid; place-items: center; overflow: hidden; }
 .cactus-img svg { width: 78%; height: 78%; }
-.cactus-img img { width: 100%; height: 100%; object-fit: cover; }
+.cactus-img img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.35s ease; }
+.product-card:hover .cactus-img.has-photo img { transform: scale(1.04); }
+.image-credit { font-size: 0.75rem; color: var(--muted); margin: 6px 2px 0; }
+.image-credit a { color: inherit; }
 
 .back-link { display: inline-block; margin-bottom: 12px; text-decoration: none; }
 .detail { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }

@@ -1,4 +1,6 @@
-// ถ้าสินค้าไม่มีรูป ให้วาดภาพประกอบตามหมวดหมู่แทน (ไม่ต้องพึ่งรูปจากข้างนอก)
+import { useEffect, useState } from 'react';
+
+// ถ้าสินค้าไม่มีรูป หรือรูปโหลดไม่ขึ้น ให้วาดภาพประกอบตามหมวดหมู่แทน
 const MOON_COLORS = { ชมพู: '#f472b6', ส้ม: '#fb923c', เหลือง: '#facc15', แดง: '#ef4444' };
 
 function moonColor(name) {
@@ -55,9 +57,34 @@ function Illustration({ product }) {
 }
 
 export default function CactusImage({ product }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [product.imageUrl]); // เปลี่ยน URL แล้วลองโหลดใหม่
+
+  const showPhoto = product.imageUrl && !failed;
   return (
-    <div className="cactus-img">
-      {product.imageUrl ? <img src={product.imageUrl} alt={product.name} loading="lazy" /> : <Illustration product={product} />}
+    <div className={`cactus-img ${showPhoto ? 'has-photo' : ''}`}>
+      {showPhoto ? (
+        <img src={product.imageUrl} alt={product.name} loading="lazy" onError={() => setFailed(true)} />
+      ) : (
+        <Illustration product={product} />
+      )}
     </div>
+  );
+}
+
+/** เครดิตรูป (แสดงในหน้ารายละเอียดสินค้า) */
+export function ImageCredit({ product }) {
+  if (!product.imageUrl || !product.imageCredit) return null;
+  return (
+    <p className="image-credit">
+      ภาพ:{' '}
+      {product.imageSource ? (
+        <a href={product.imageSource} target="_blank" rel="noreferrer">
+          {product.imageCredit}
+        </a>
+      ) : (
+        product.imageCredit
+      )}
+    </p>
   );
 }

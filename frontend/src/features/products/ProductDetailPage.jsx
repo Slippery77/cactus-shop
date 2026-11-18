@@ -1,7 +1,7 @@
 import { Link, useParams } from 'react-router-dom';
 import { baht } from '../../lib/format';
 import { useShopData } from './ShopDataContext';
-import CactusImage from './CactusImage';
+import CactusImage, { ImageCredit } from './CactusImage';
 import { BuyButtons, StockBadge } from './ProductCard';
 import { useCart } from '../cart/CartContext';
 
@@ -29,8 +29,11 @@ export default function ProductDetailPage() {
         ← {category?.name || 'กลับหน้าร้าน'}
       </Link>
       <div className="detail">
-        <div className="card detail-image">
-          <CactusImage product={product} />
+        <div>
+          <div className="card detail-image">
+            <CactusImage product={product} />
+          </div>
+          <ImageCredit product={product} />
         </div>
         <div className="detail-info">
           <span className="product-cat">{category?.name}</span>

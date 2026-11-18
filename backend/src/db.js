@@ -101,7 +101,13 @@ export function createProduct(input) {
 export function updateProduct(id, input) {
   const product = getProduct(id);
   if (!product) throw new HttpError(404, 'ไม่พบสินค้า');
-  Object.assign(product, cleanProductInput(input, { partial: true }), { updatedAt: now() });
+  const changes = cleanProductInput(input, { partial: true });
+  // เปลี่ยนรูปแล้ว เครดิตของรูปเดิมไม่ตรงอีกต่อไป
+  if (changes.imageUrl !== undefined && changes.imageUrl !== product.imageUrl) {
+    delete product.imageCredit;
+    delete product.imageSource;
+  }
+  Object.assign(product, changes, { updatedAt: now() });
   persist();
   return product;
 }

@@ -91,4 +91,6 @@ npm run dev
 - มี `vercel.json` และ `public/_redirects` ให้แล้ว รีเฟรชหน้าย่อยอย่าง `/admin` จะไม่ 404
 
 ---
+รูปสินค้าตัวอย่างมาจาก [Wikimedia Commons](https://commons.wikimedia.org) (CC BY / CC BY-SA) เครดิตผู้ถ่ายแสดงอยู่ใต้รูปในหน้ารายละเอียดสินค้า
+
 ข้อมูลจังหวัด/อำเภอ/ตำบล/รหัสไปรษณีย์: [kongvut/thai-province-data](https://github.com/kongvut/thai-province-data) (MIT License)
