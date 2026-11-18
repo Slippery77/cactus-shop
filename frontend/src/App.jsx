@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router-dom';
 import Header from './components/Header';
+import BotnoiChat from './components/BotnoiChat';
 import ProductsPage from './features/products/ProductsPage';
 import ProductDetailPage from './features/products/ProductDetailPage';
 import CartPage from './features/cart/CartPage';
@@ -14,6 +15,7 @@ export default function App() {
   return (
     <>
       <Header />
+      <BotnoiChat />
       <main>
         <Routes>
           <Route path="/" element={<ProductsPage />} />
