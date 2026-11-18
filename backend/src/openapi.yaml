@@ -1,0 +1,354 @@
+openapi: 3.0.3
+info:
+  title: Cactus Shop API
+  version: 1.0.0
+  description: |
+    API ร้านขายกระบองเพชร (ยังไม่มีระบบชำระเงิน)
+
+    - ไม่มีระบบ login ทุก endpoint เรียกได้เลย
+    - `/api/admin/*` คือ endpoint ที่หน้าหลังบ้านใช้ (จัดการสินค้า/ออเดอร์)
+    - Error ทุกตัวตอบเป็น `{ "error": "ข้อความ", "details": [...] }`
+    - Realtime ใช้ Server-Sent Events: เปิด `GET /api/events` ค้างไว้แล้วรอรับ event
+servers:
+  - url: http://localhost:4000
+    description: Local
+tags:
+  - name: Shop
+    description: ฝั่งลูกค้า
+  - name: Admin
+    description: หลังบ้าน
+  - name: Realtime
+    description: Server-Sent Events
+
+paths:
+  /api/categories:
+    get:
+      tags: [Shop]
+      summary: รายการหมวดหมู่
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Category' }
+
+  /api/products:
+    get:
+      tags: [Shop]
+      summary: รายการสินค้า (กรองตามหมวดได้)
+      parameters:
+        - in: query
+          name: category
+          schema: { type: string, example: astrophytum }
+          description: id ของหมวดหมู่
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Product' }
+
+  /api/products/{id}:
+    get:
+      tags: [Shop]
+      summary: รายละเอียดสินค้า
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, example: astro-001 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /api/orders:
+    post:
+      tags: [Shop]
+      summary: สร้างคำสั่งซื้อ (ตัดสต็อกทันที)
+      description: |
+        เช็กสต็อกทุกรายการก่อน ถ้ามีรายการใดไม่พอจะไม่สร้างออเดอร์และไม่ตัดสต็อกเลย (ตอบ 409)
+        ถ้าสำเร็จจะได้สถานะ `pending`
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOrderInput' }
+      responses:
+        '201':
+          description: สร้างแล้ว
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400': { $ref: '#/components/responses/Error' }
+        '409':
+          description: สต็อกไม่พอ
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error: สินค้าบางรายการมีไม่พอ
+                details:
+                  - { productId: astro-004, name: Astrophytum capricorne, reason: insufficient_stock, requested: 5, available: 3 }
+
+  /api/orders/{orderNo}:
+    get:
+      tags: [Shop]
+      summary: เช็กสถานะคำสั่งซื้อ (ใช้กับหน้าติดตามออเดอร์ / chatbot)
+      description: ต้องส่งเบอร์โทรที่ใช้สั่งซื้อให้ตรงกัน ถึงจะเห็นข้อมูล (ไม่คืนชื่อและที่อยู่)
+      parameters:
+        - { in: path, name: orderNo, required: true, schema: { type: string, example: CT261118-0001 } }
+        - { in: query, name: phone, required: true, schema: { type: string, example: '0812345678' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderStatus' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /api/admin/products:
+    post:
+      tags: [Admin]
+      summary: เพิ่มสินค้า
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductInput' }
+      responses:
+        '201':
+          description: สร้างแล้ว
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '400': { $ref: '#/components/responses/Error' }
+
+  /api/admin/products/{id}:
+    patch:
+      tags: [Admin]
+      summary: แก้ไขสินค้า (ส่งเฉพาะ field ที่จะแก้ เช่น แก้สต็อกอย่างเดียว)
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductInput' }
+            example: { stock: 0 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Admin]
+      summary: ลบสินค้า
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '204': { description: ลบแล้ว }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /api/admin/orders:
+    get:
+      tags: [Admin]
+      summary: รายการคำสั่งซื้อทั้งหมด (ใหม่สุดก่อน)
+      parameters:
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/OrderStatusValue' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Order' }
+
+  /api/admin/orders/{id}/status:
+    patch:
+      tags: [Admin]
+      summary: เปลี่ยนสถานะคำสั่งซื้อ
+      description: ถ้าเปลี่ยนเป็น `cancelled` ระบบจะคืนสต็อกให้อัตโนมัติ และออเดอร์ที่ยกเลิกแล้วเปลี่ยนสถานะต่อไม่ได้
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/OrderStatusValue' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /api/events:
+    get:
+      tags: [Realtime]
+      summary: Event stream สาธารณะ (SSE)
+      description: |
+        เปิดด้วย `new EventSource('/api/events')`
+        - `product.updated` → data = Product (สต็อก/ราคา/ข้อมูลเปลี่ยน หรือเพิ่มสินค้าใหม่)
+        - `product.deleted` → data = `{ "id": "..." }`
+      responses:
+        '200':
+          description: text/event-stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+
+  /api/admin/events:
+    get:
+      tags: [Realtime]
+      summary: Event stream ของ admin (SSE)
+      description: |
+        เปิดด้วย `new EventSource('/api/admin/events')`
+        ได้ทุก event ของช่องสาธารณะ และเพิ่ม
+        - `order.created` → data = Order
+        - `order.updated` → data = Order
+      responses:
+        '200':
+          description: text/event-stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+
+components:
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        details: { type: array, items: { type: object } }
+
+    Category:
+      type: object
+      properties:
+        id: { type: string, example: astrophytum }
+        name: { type: string, example: Astrophytum }
+        description: { type: string }
+
+    Product:
+      type: object
+      properties:
+        id: { type: string, example: astro-001 }
+        categoryId: { type: string, example: astrophytum }
+        name: { type: string }
+        description: { type: string }
+        price: { type: number, example: 350 }
+        stock: { type: integer, example: 8, description: '0 = สินค้าหมด' }
+        imageUrl: { type: string, description: 'ว่างได้ หน้าบ้านจะแสดงภาพประกอบแทน' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ProductInput:
+      type: object
+      description: ตอนสร้างต้องมี name, categoryId, price, stock / ตอนแก้ส่งเฉพาะที่จะแก้
+      properties:
+        name: { type: string }
+        categoryId: { type: string }
+        description: { type: string }
+        price: { type: number, minimum: 0 }
+        stock: { type: integer, minimum: 0 }
+        imageUrl: { type: string }
+
+    Address:
+      type: object
+      required: [houseNo, subDistrict, district, province, zipCode]
+      properties:
+        houseNo: { type: string, example: '99/1' }
+        moo: { type: string, example: '4' }
+        street: { type: string, example: 'ซอยร่มเย็น' }
+        subDistrict: { type: string, example: 'กำแพงแสน' }
+        district: { type: string, example: 'กำแพงแสน' }
+        province: { type: string, example: 'นครปฐม' }
+        zipCode: { type: string, example: '73140' }
+
+    CreateOrderInput:
+      type: object
+      required: [customer, address, items]
+      properties:
+        customer:
+          type: object
+          required: [name, phone]
+          properties:
+            name: { type: string, example: 'สมชาย ใจดี' }
+            phone: { type: string, example: '0812345678' }
+        address: { $ref: '#/components/schemas/Address' }
+        note: { type: string, example: 'ฝากไว้ที่ป้อม รปภ.' }
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [productId, qty]
+            properties:
+              productId: { type: string, example: astro-001 }
+              qty: { type: integer, minimum: 1, example: 2 }
+
+    OrderItem:
+      type: object
+      properties:
+        productId: { type: string }
+        name: { type: string }
+        price: { type: number, description: ราคา ณ ตอนสั่ง }
+        qty: { type: integer }
+
+    OrderStatusValue:
+      type: string
+      enum: [pending, shipping, completed, cancelled]
+      description: 'pending = รอดำเนินการ, shipping = กำลังจัดส่ง, completed = สำเร็จ, cancelled = ยกเลิก'
+
+    Order:
+      type: object
+      properties:
+        id: { type: string }
+        orderNo: { type: string, example: CT261118-0001 }
+        customer:
+          type: object
+          properties:
+            name: { type: string }
+            phone: { type: string }
+        address: { $ref: '#/components/schemas/Address' }
+        note: { type: string }
+        items: { type: array, items: { $ref: '#/components/schemas/OrderItem' } }
+        total: { type: number }
+        status: { $ref: '#/components/schemas/OrderStatusValue' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    OrderStatus:
+      type: object
+      properties:
+        id: { type: string }
+        orderNo: { type: string }
+        status: { $ref: '#/components/schemas/OrderStatusValue' }
+        items: { type: array, items: { $ref: '#/components/schemas/OrderItem' } }
+        total: { type: number }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
