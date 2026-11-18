@@ -10,7 +10,7 @@ import publicRoutes from './routes/public.js';
 import adminRoutes from './routes/admin.js';
 import { HttpError } from './db.js';
 import { handleMcp, mcpMethodNotAllowed, mcpLog } from './mcp.js';
-import { chatRouter } from './chat.js';
+import { chatRouter, logUnexpected } from './chat.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 4000;
@@ -20,6 +20,16 @@ const app = express();
 app.use(cors({ origin: origins.includes('*') ? true : origins }));
 // เก็บ body ดิบไว้ตรวจลายเซ็นของ Botnoi callback
 app.use(express.json({ limit: '100kb', verify: (req, _res, buf) => { req.rawBody = buf.toString('utf8'); } }));
+// เผื่อ Botnoi ส่ง content-type อื่น: เก็บเป็นข้อความดิบไว้ แล้วลองแปลงเป็น JSON
+app.use(express.text({ type: (req) => !req.is('application/json'), limit: '100kb' }));
+app.use((req, _res, next) => {
+  if (typeof req.body === 'string') {
+    req.rawBody = req.body;
+    try { req.body = JSON.parse(req.body); } catch { req.body = { text: req.body }; }
+  }
+  next();
+});
+app.use(logUnexpected);
 
 // API docs (Swagger UI) → http://localhost:4000/api-docs
 const openapi = YAML.parse(fs.readFileSync(path.join(__dirname, 'openapi.yaml'), 'utf8'));
