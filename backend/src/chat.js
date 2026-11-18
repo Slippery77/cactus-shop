@@ -102,6 +102,24 @@ function verifySignature(rawBody, header) {
 // ---------- routes ----------
 export const chatRouter = Router();
 
+// บันทึกทุก request ที่ไม่ใช่ของหน้าเว็บเรา (ไว้ดูว่า Botnoi เรียกมาที่ไหน ด้วย method อะไร)
+export function logUnexpected(req, _res, next) {
+  const own = ['/api/chat/send', '/api/chat/events', '/api/chat/log'];
+  const isOwn = own.some((p) => req.path.startsWith(p)) || req.path.startsWith('/api/products') || req.path.startsWith('/api/categories') || req.path.startsWith('/api/events') || req.path.startsWith('/api/admin') || req.path.startsWith('/api-docs') || req.path === '/mcp/log';
+  if (!isOwn) {
+    log({
+      dir: 'hit',
+      method: req.method,
+      path: req.originalUrl.slice(0, 200),
+      contentType: req.headers['content-type'],
+      userAgent: String(req.headers['user-agent'] || '').slice(0, 80),
+      hasSignature: Boolean(req.headers['x-platform-signature']),
+      body: (req.rawBody || '').slice(0, 1500),
+    });
+  }
+  next();
+}
+
 // Express 4 ไม่จับ error ของ async handler ให้เอง
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -173,7 +191,7 @@ chatRouter.post('/send', wrap(async (req, res) => {
 }));
 
 // Botnoi ส่งคำตอบของบอทมาที่นี่ (ตั้งเป็น URL ของ Custom Channel)
-chatRouter.post('/botnoi-callback', (req, res) => {
+chatRouter.post(['/botnoi-callback', '/botnoi-callback/*'], (req, res) => {
   const raw = req.rawBody || JSON.stringify(req.body || {});
   const signatureOk = verifySignature(raw, req.get('x-platform-signature'));
   const sessionId = findSessionId(req.body);
